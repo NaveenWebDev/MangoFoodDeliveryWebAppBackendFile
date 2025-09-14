@@ -1,6 +1,7 @@
 const User = require("../models/user.model");
 const bcrypt = require('bcryptjs');
 const genToken = require("../utils/token");
+const sendEmail = require("../utils/nodemailer");
 
 exports.signUp = async (req, res) =>{
     try{
@@ -98,6 +99,78 @@ exports.signOut = async (req, res) =>{
         return res.status(200).json({ message: "User signed out successfully" });
     } catch(error){
         console.error("Error signing out user:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+exports.sendOtp = async (req, res) =>{
+    try{
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "User does not exist" });
+        }
+
+        // Generate OTP
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        user.otp = otp;
+        await user.save();
+
+        user.resetOtp = otp;
+        user.otpExpiryTime = Date.now() + 5 * 60 * 1000;
+        user.isOtpVerified = false;
+        await user.save();
+
+        // Send OTP email
+        await sendEmail(email, otp);
+
+        return res.status(200).json({ message: "OTP sent successfully" });
+    } catch (error) {
+        console.error("Error sending OTP:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+exports.verifyOtp = async (req, res) =>{
+    try{
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "User does not exist" });
+        }
+        if (!user || user.resetOtp !== otp || user.otpExpiryTime < Date.now()) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+        user.resetOtp = undefined;
+        user.isOtpVerified = true;
+        user.otpExpiryTime = undefined;
+        await user.save();
+
+        return res.status(200).json({ message: "OTP verified successfully" });
+    } catch (error) {
+        console.error("Error verifying OTP:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+exports.resetPassword = async (req, res) =>{
+    try{
+        const { email, newPassword } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "User does not exist" });
+        }
+        if (!user.isOtpVerified) {
+            return res.status(400).json({ message: "OTP not verified" });
+        }
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: "Password must be at least 6 characters" });
+        }
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+        return res.status(200).json({ message: "Password reset successfully" });
+    } catch (error) {
+        console.error("Error resetting password:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 }

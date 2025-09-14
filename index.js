@@ -11,12 +11,16 @@ const cors = require('cors');
 const PORT = process.env.PORT || 4000;
 
 // Middleware
-app.use(cors()); 
+app.use(cors({
+    credentials: true, // for cookies
+    origin: "http://localhost:5173"
+}));
+
 app.use(express.json());
 app.use(cookieParser()); // To parse cookies
 
 // Import routes
-app.use('/api/v1/auth', authRoutes);
+app.use('/api-v1/auth', authRoutes);
 
 // Routes
 app.get('/', (req, res) => {
